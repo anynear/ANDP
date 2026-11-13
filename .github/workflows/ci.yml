@@ -1,0 +1,51 @@
+# The Kotlin client checks the shared vectors (vectors/andp-v1.json) and runs its unit tests on every pull request and
+# push to main (jobs kotlin and ios).
+#
+# Runners: GitHub's runners, unless the repository variables RUNNER_LINUX or RUNNER_MAC name others (a JSON label list).
+# Only the project's working repository sets them; this repository never runs on machines of the project.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  kotlin:
+    runs-on: ${{ fromJSON(vars.RUNNER_LINUX || '"ubuntu-latest"') }}
+    defaults:
+      run:
+        working-directory: ANDP/kotlin
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: ANDP
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - uses: gradle/actions/setup-gradle@v4
+      - run: ./gradlew :andp:jvmTest :andp:jsTest --console=plain
+
+  ios:
+    # Job name stays "ios" (required check).
+    runs-on: ${{ fromJSON(vars.RUNNER_MAC || '"macos-latest"') }}
+    defaults:
+      run:
+        working-directory: kotlin
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - uses: gradle/actions/setup-gradle@v4
+      - run: ./gradlew :andp:iosSimulatorArm64Test --console=plain
