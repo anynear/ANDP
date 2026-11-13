@@ -14,7 +14,8 @@ import kotlin.test.assertTrue
 
 /**
  * Pinned client against the Go test relay (internal/cmd/testrelay in the private repository ANDP-Peer) over real TLS: SPKI pinning, no
- * SNI, and every endpoint. Runs only where `go` is installed (set ANDP_REQUIRE_GO=1 to fail instead).
+ * SNI, and every endpoint. Runs only where ANDP-Peer is checked out and `go` is installed (set ANDP_REQUIRE_GO=1 to fail
+ * instead).
  */
 class GoRelayIntegrationTest {
     @Serializable
@@ -31,8 +32,14 @@ class GoRelayIntegrationTest {
     @Test
     fun pinnedClientAgainstGoRelay() {
         val goDir = File(System.getenv("ANDP_GO_DIR") ?: return)
+        val required = System.getenv("ANDP_REQUIRE_GO") == "1"
+        if (!File(goDir, "go.mod").isFile) {
+            if (required) error("ANDP-Peer is required for the integration test, not found at $goDir")
+            println("GoRelayIntegrationTest: ANDP-Peer not found, skipped")
+            return
+        }
         if (!goAvailable()) {
-            if (System.getenv("ANDP_REQUIRE_GO") == "1") error("go is required for the integration test")
+            if (required) error("go is required for the integration test")
             println("GoRelayIntegrationTest: go not found, skipped")
             return
         }
