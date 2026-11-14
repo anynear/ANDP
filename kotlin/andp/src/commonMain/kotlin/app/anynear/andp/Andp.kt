@@ -32,7 +32,7 @@ object Andp {
     /** Maximum number of ids in one status request (§5.7). */
     const val MAX_STATUS_IDS = 1000
 
-    /** Maximum number of items in one peer/have or peer/ref request (§8). */
+    /** Maximum number of items in one peer/have or peer/ref request (ANDP Peer). */
     const val MAX_PEER_ITEMS = 1000
 
     /** Longest long poll in seconds (§5.6). */
@@ -41,7 +41,7 @@ object Andp {
     /** Largest page of a list request (§5.6). */
     const val MAX_LIST_LIMIT = 200
 
-    /** The only network list version of ANDP 1 (§5.8). */
+    /** The only network list version of ANDP v1 (§5.8). */
     const val LIST_VERSION = 1
 
     /** Name of the watch extension (§10). */
@@ -50,10 +50,10 @@ object Andp {
     /** The webpush target of watch (§10.1). */
     const val EXTENSION_WEBPUSH = "webpush"
 
-    /** The radio list extension (§5.9). */
     /** Name of the view extension (§17). */
     const val EXTENSION_VIEW = "view"
 
+    /** The radio list extension (§5.9). */
     const val EXTENSION_RADIO = "radio"
 
     /** Extension stream (§18) with the watch target `relay` (§10.2). */

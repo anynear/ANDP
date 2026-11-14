@@ -77,7 +77,7 @@ data class Tombstone(
     val grant: Grant? = null,
     val sig: Sig,
 ) {
-    /** Checks the delete signature and the delete right at ts (§5.5, §8 step 7). */
+    /** Checks the delete signature and the delete right at ts (§5.5, §8). */
     suspend fun verify(revoked: Revoked? = null) {
         if (ts < 0) throw AndpException("andp: tombstone: negative ts")
         if (!key.verify(SigningBytes.delete(space, id, ts), sig)) throw BadSignatureException("tombstone")

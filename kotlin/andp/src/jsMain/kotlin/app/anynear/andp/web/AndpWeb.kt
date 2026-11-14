@@ -31,6 +31,7 @@ import app.anynear.andp.Rights
 import app.anynear.andp.SignedList
 import app.anynear.andp.SigningKey
 import app.anynear.andp.WatchRequest
+import app.anynear.andp.decodeAndpJson
 import app.anynear.andp.networkId
 import app.anynear.andp.watchIdForHexToken
 import kotlinx.coroutines.DelicateCoroutinesApi
@@ -109,14 +110,14 @@ object AndpWeb {
 
     /** Opens a signed list (JSON `{list, sig}`) on first contact; resolves to the list JSON. */
     fun verifyNetworkList(signedJson: String, networkId: String, key: String): Promise<String> = call {
-        val l = NetworkList.verify(AndpJson.decodeFromString(SignedList.serializer(), signedJson), Hash.parse(networkId), Key.parse(key))
+        val l = NetworkList.verify(decodeAndpJson(SignedList.serializer(), signedJson), Hash.parse(networkId), Key.parse(key))
         AndpJson.encodeToString(NetworkList.serializer(), l)
     }
 
     /** Accepts a newer signed list after the current list JSON (§5.8); resolves to the new list JSON. */
     fun acceptNetworkList(currentJson: String, signedJson: String): Promise<String> = call {
-        val cur = AndpJson.decodeFromString(NetworkList.serializer(), currentJson)
-        val l = cur.accept(AndpJson.decodeFromString(SignedList.serializer(), signedJson))
+        val cur = decodeAndpJson(NetworkList.serializer(), currentJson)
+        val l = cur.accept(decodeAndpJson(SignedList.serializer(), signedJson))
         AndpJson.encodeToString(NetworkList.serializer(), l)
     }
 
@@ -125,7 +126,7 @@ object AndpWeb {
      * JSON, with substitutes for the nodes in [down] (§6).
      */
     fun targets(key: String, listJson: String, down: Array<String>): String = sync {
-        val l = AndpJson.decodeFromString(NetworkList.serializer(), listJson)
+        val l = decodeAndpJson(NetworkList.serializer(), listJson)
         val t = Placements.place(key, l.relays).targets { it.toString() !in down }
         AndpJson.encodeToString(ListSerializer(Relay.serializer()), t)
     }
@@ -168,7 +169,7 @@ class AndpWebClient(baseUrl: String) {
     ): Promise<String> = call {
         val c = cred(signer, grant)
         val spaceKey = Key.parse(space)
-        val refs = if (refsJson.isEmpty()) emptyList() else AndpJson.decodeFromString(ListSerializer(Ref.serializer()), refsJson)
+        val refs = if (refsJson.isEmpty()) emptyList() else decodeAndpJson(ListSerializer(Ref.serializer()), refsJson)
         val meta = Meta.signData(
             c.key, spaceKey, data, client.now(), until.toLong(), Placement.parse(placement), refs,
             grant = if (c.key.key == spaceKey) null else c.grant,
@@ -196,7 +197,7 @@ class AndpWebClient(baseUrl: String) {
 
     /** POST /andp/v1/watch with the request JSON of §10. */
     fun watch(signer: AndpWebSigner, grant: String, requestJson: String): Promise<Unit> = call {
-        client.watch(cred(signer, grant), AndpJson.decodeFromString(WatchRequest.serializer(), requestJson))
+        client.watch(cred(signer, grant), decodeAndpJson(WatchRequest.serializer(), requestJson))
     }
 
     fun close() = client.close()
@@ -205,7 +206,7 @@ class AndpWebClient(baseUrl: String) {
         /** A client for a relay entry (JSON) of the verified network list; it connects to its `host`. */
         fun forRelay(relayJson: String): AndpWebClient {
             val r = try {
-                AndpJson.decodeFromString(Relay.serializer(), relayJson)
+                decodeAndpJson(Relay.serializer(), relayJson)
             } catch (e: Exception) {
                 throw AndpWebError("andp: invalid relay: ${e.message}", 0, "", null)
             }

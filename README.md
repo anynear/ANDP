@@ -8,8 +8,8 @@ ANDP is the storage and delivery layer of [anynear](https://anynear.app), an app
 connected: messages, shared files and passwords, end-to-end encrypted, over the internet and optionally by radio. What
 the bytes mean is defined one layer up, in ANMP (anynear Message Protocol, repository `anynear/ANMP`).
 
-**Status:** version v1, in use on the anynear network. Not independently audited. Read §16 of the specification
-(security considerations) before relying on it.
+**Status:** version v1, in use on the anynear network since November 2026. Security considerations: §16 of the
+specification.
 
 | Path | Content |
 |---|---|

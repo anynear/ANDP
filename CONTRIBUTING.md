@@ -4,7 +4,7 @@ Thank you for looking at ANDP. Issues and pull requests are welcome, in English 
 
 ## Rules
 
-- **Specification first.** A change of a format or of behaviour changes `spec/andp.md`, the test vectors and the
+- **Specification first.** A change to a format or to behaviour changes `spec/andp.md`, the test vectors and the
   Kotlin client together.
 - **Version v1 stays compatible.** Paths `/andp/v1/…`, signing domains `andp/v1/…` and headers `ANDP-…` are never
   renamed. Unknown fields are ignored everywhere; an unknown value rejects only the item that carries it (§13). An
@@ -29,7 +29,7 @@ arrives here with the next update of `main`. The pull request is then closed wit
 
 Contributions need your agreement to the Contributor License Agreement in [CLA.md](CLA.md): you keep the copyright and
 give the project a licence that also allows it to license your contribution under other terms. A bot asks for your
-agreement in your first pull request; you agree by commenting the sentence it shows. Accepted contributions stay
-available under GPL-3.0-or-later, like the rest of the repository. Because of this agreement, the project can also offer the code
-under a commercial licence ([COMMERCIAL.md](COMMERCIAL.md)). The name “anynear” and its logos are not covered by any
+agreement in your first pull request; you agree by posting the sentence it shows as a comment. Accepted contributions stay
+available under GPL-3.0-or-later, like the rest of the repository. Because of this agreement, the project can also
+offer the code under a commercial licence ([COMMERCIAL.md](COMMERCIAL.md)). The name “anynear” and its logos are not covered by any
 of these licences.
