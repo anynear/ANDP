@@ -276,7 +276,7 @@ class AndpClient internal constructor(
     private suspend fun <T> decode(resp: HttpResponse, serializer: KSerializer<T>, what: String): T {
         val data = resp.readLimited(MAX_JSON_BYTES) ?: throw AndpException("client: response too large")
         return try {
-            AndpJson.decodeFromString(serializer, data.decodeToString())
+            decodeAndpJson(serializer, data.decodeToString())
         } catch (e: SerializationException) {
             throw AndpException("client: $what: ${e.message}", e)
         } catch (e: IllegalArgumentException) {
@@ -343,7 +343,7 @@ private suspend fun readError(resp: HttpResponse): AndpHttpException {
     val status = resp.status.value
     val data = resp.readLimited(AndpClient.MAX_ERROR_BYTES) ?: ByteArray(0)
     val body = try {
-        AndpJson.decodeFromString(ErrorBody.serializer(), data.decodeToString())
+        decodeAndpJson(ErrorBody.serializer(), data.decodeToString())
     } catch (e: Exception) {
         null
     }

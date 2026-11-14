@@ -1,8 +1,8 @@
 # ANDP for Kotlin Multiplatform
 
 Gradle module `:andp` (package `app.anynear.andp`) implementing `spec/andp.md` (version v1) for Android, JVM, iOS
-(arm64, simulatorArm64, x64) and JS (IR, browser and Node.js). Same semantics as the Go packages `andp` and
-`andp/client`; versions of Kotlin, Ktor, kotlinx-serialization and cryptography-kotlin follow the App.
+(arm64, simulatorArm64, x64) and JS (IR, browser and Node.js). It has the same semantics as the Go implementation
+the relays use; the versions of Kotlin, Ktor, kotlinx-serialization and cryptography-kotlin follow the anynear app.
 
 | Part | Content |
 |---|---|
@@ -44,5 +44,5 @@ cd kotlin
 
 Tests read `../vectors/andp-v1.json` (never write it). `jvmTest` also runs the pinned client against the Go test
 relay (`go run ./internal/cmd/testrelay` in the private repository ANDP-Peer, `../../ANDP-Peer` or `ANDP_PEER_DIR`)
-when `go` and that repository are present; `ANDP_REQUIRE_GO=1` makes a missing Go
-an error. The Android SDK is found through `ANDROID_HOME` or `local.properties` (not checked in).
+when `go` and that repository are present, and skips this test otherwise; `ANDP_REQUIRE_GO=1` makes a missing Go an
+error. The Android SDK is found through `ANDROID_HOME` or `local.properties` (not checked in).

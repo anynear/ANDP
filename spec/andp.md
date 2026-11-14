@@ -1,8 +1,6 @@
 # ANDP – anynear Distributed Protocol, version v1
 
-Status: version v1, in use on the anynear network since November 2026. Not independently audited. It replaces an
-earlier internal draft (PDP 1) with the same semantics, new values (`andp/v1/…`, `/andp/v1`, `ANDP-…`) and the
-forward-compatibility rules of §13. Security considerations: §16.
+Status: version v1, in use on the anynear network since November 2026. Security considerations: §16.
 
 ANDP is a content-blind, replicated object store. Clients write immutable **objects** into **spaces**. A space is an
 Ed25519 public key; its **owner** holds the private key and may hand out **grants**. Relays of one **network** keep
@@ -35,7 +33,7 @@ Example: `sign("andp/v1/del", space, id, ts)` means signing the bytes `andp/v1/d
 | `id` | b64u(SHA-256(bytes)) of an object. Always 43 characters. |
 | `node` | b64u of a relay's Ed25519 public key (node key). |
 | `network` | b64u of the network key (Ed25519 public key that signs the network list). |
-| network ID | b64u(SHA-256(raw first network key)), i.e. of the key that signed the network's first list. Never changes, also not on key rotation; carried as `id` in every network list. Used in contact codes and links. |
+| network ID | b64u(SHA-256(raw first network key)), i.e. of the key that signed the network's first list. Never changes, not even on key rotation; carried as `id` in every network list. Used in contact codes and links. |
 | grant hash | b64u(SHA-256(grant body bytes)), see §4. |
 | watch ID | b64u(SHA-256(push token bytes)[0..16]). |
 
@@ -69,9 +67,10 @@ Terms used below:
 Rules:
 
 1. A relay MUST check that SHA-256 of the received bytes equals `id` and that `size` matches.
-2. Objects are immutable. Writing the same `(space, id)` again with identical bytes succeeds and keeps the
-   existing metadata, except that the later `until` wins (`0` counts as latest). Different bytes cannot have the
-   same `id`.
+2. Objects are immutable. Writing the same `(space, id)` again with identical bytes succeeds. The relay keeps the
+   stored metadata unless the new `until` is later (`0` counts as latest) or the stored copy has expired; then the
+   new signed metadata replaces it. Writing it again with a different `placement` is rejected (409). Different bytes
+   cannot have the same `id`.
 3. A content MUST have empty `refs` and empty `revokes`. An entry's `refs` MUST point to contents in the same space.
 4. `until`, when not `0`, MUST be greater than `ts` and at most `ts + max_until` (policy, §11). A relay MUST NOT
    deliver an object after its `until`.
@@ -159,6 +158,8 @@ All paths start with `/andp/v1`. Relays MUST support HTTP/1.1 and SHOULD support
 | GET | `/andp/v1/info` | – | node, network, policy, extensions |
 | GET | `/andp/v1/net` | – | current network list |
 | POST | `/andp/v1/net` | – (signed body) | offer a newer network list |
+| GET | `/andp/v1/radio` | – | extension radio: current radio list (§5.9) |
+| POST | `/andp/v1/radio` | – (signed body) | extension radio: offer a newer radio list |
 | GET | `/andp/v1/s/{space}` | `list` | list entries |
 | PUT | `/andp/v1/s/{space}/{id}` | `write` or peer | write an object |
 | GET | `/andp/v1/s/{space}/{id}` | `read` (entries) / none (contents) | read an object |
@@ -187,7 +188,7 @@ ANDP Peer and not of this document.
     "cors_origins": ["*"],
     "repair_interval": 60
   },
-  "extensions": ["watch", "webpush", "radio", "stream"],
+  "extensions": ["watch", "webpush", "radio", "view", "stream"],
   "webpush": "<b64u VAPID public key>",
   "stream": {"ping": 180, "clients": false},
   "clients": {"min": 1}
@@ -198,7 +199,7 @@ All policy values are relay or network decisions; clients MUST read them instead
 
 `clients.min` is the lowest **client level** the network still serves fully (optional, absent means `1`). Every client
 implementation has a fixed client level, an integer that starts at `1` and grows only when the network needs newer
-clients. A client whose level is lower keeps working as far as it can and asks the person
+clients. A client whose level is lower keeps working as far as it can and asks the user
 to update the app; it MUST NOT stop silently. Relays take the value from relay policy.
 
 ### 5.3 PUT /andp/v1/s/{space}/{id}
@@ -231,12 +232,13 @@ Responses:
 | Status | Meaning |
 |---|---|
 | 200 | stored durably. Body `{"node": "<b64u>", "receipt": "<b64u sig>"}` with `receipt = sign("andp/v1/receipt", space, id, until)` by the node key, `until` as in the request's `ANDP-Until`. |
-| 400 | malformed request, wrong hash or size, invalid `until`, refs on a content |
+| 400 | malformed request, wrong hash or size, invalid or past `until`, refs on a content, client write with `ts` more than 300 s from the relay's clock |
 | 401 | missing or invalid `Authorization` |
-| 403 | no `write` right, invalid grant, revoked grant, invalid object signature |
-| 409 | a different object with this id exists (cannot happen with SHA-256; reserved) |
+| 403 | no `write` right, invalid grant, revoked grant, invalid object signature, `Authorization` key is not the writer |
+| 409 | the object exists here with a different `placement` |
 | 410 | a tombstone exists for this object |
 | 413 | larger than `max_object_bytes` |
+| 421 | peer write to a relay that is not a holder of the object (§6) |
 | 429 | rate limit, including `writer_daily_bytes` |
 | 507 | quota of the space or disk reserve exhausted |
 
@@ -260,11 +262,11 @@ If the relay does not hold the object (§9, read via any relay):
 
 Needs `delete` (a scoped grant suffices). Headers: `Authorization`, `ANDP-Del-Sig` =
 `sign("andp/v1/del", space, id, ts)` by the `Authorization` key with the `ts` of the `Authorization` header. The
-relay stores a **tombstone** `{space, id, ts, key, grant, sig}` (`grant` omitted when `key` is the owner), removes the bytes and returns 204, also when it never
-held the object. Tombstones are passed on between relays (§8).
+relay stores a **tombstone** `{space, id, ts, key, grant, sig}` (`grant` omitted when `key` is the owner), removes the
+bytes and returns 204, also when it never held the object. Tombstones are passed on between relays (§8).
 
 A tombstone for an object with `until > 0` MAY be dropped after `until`. A tombstone for an object without expiry
-is kept (policy may cap the count per space).
+is kept (policy may cap the count per space; a DELETE beyond the cap gets 507).
 
 ### 5.6 GET /andp/v1/s/{space}
 
@@ -285,6 +287,7 @@ Needs `list`. Query: `after` (cursor, default empty = from the start), `wait` (0
 - Only entries are listed. `data` is included when `size ≤ inline_bytes`, otherwise the client fetches the entry
   by GET.
 - `refs`, `revokes`, `grant` and `data` are omitted when empty. Clients verify each item like a GET (§3).
+- `next` is the cursor for the following call; without new entries it is the cursor that was sent.
 - The cursor is opaque and only valid at the relay that issued it. A client keeps one cursor per relay and
   starts from the empty cursor at a relay it has not used before.
 - With `wait > 0` and no new entries, the relay holds the request up to `wait` seconds.
@@ -325,7 +328,7 @@ Needs `read`. Body `{"ids": ["…"]}` (at most 1000). Response `{"objects": {"<i
 | `network` | the key that signed this list (the current network key) |
 | `issued` | Unix milliseconds; a receiver accepts a list only if `issued` is strictly greater than its current one |
 | `next` | optional; announces the next network key. A list signed by `next` is accepted from then on; `network` in that list is the new key, `id` stays |
-| `relays[].site` | optional label for people (e.g. country, place and a number); not used by the protocol |
+| `relays[].site` | optional label for humans (e.g. country, place and a number); not used by the protocol |
 | `relays[].addr` | `host:port` with an IP address, for apps (pinned TLS) |
 | `relays[].key` | b64u(SHA-256(SubjectPublicKeyInfo)) of the relay's TLS key for `addr` |
 | `relays[].host` | optional DNS name for browsers (Web PKI certificate, §12) |
@@ -345,7 +348,7 @@ active: it is never placed (§6), never a repair target (§8) and never asked by
 not cut off older clients.
 
 `POST /andp/v1/net` with the same body offers a list to a relay. 200 if accepted, 409 if not newer, 403 if the
-signature fails.
+signature fails or the list belongs to another network, 400 if it is malformed.
 
 ### 5.9 Radio list
 
@@ -392,8 +395,8 @@ depend on the order of the list.
 ## 7. Contents and orphans
 
 - A content is written to the holders of its `id` with a `write` right in its space. Content holders verify grant
-  signature and validity without state, the hash and the writer's daily limit (`writer_daily_bytes`). They do not
-  check revocations or quota.
+  signature and validity without state, the hash and, for client writes, the writer's daily limit
+  (`writer_daily_bytes`). They do not check revocations or quota.
 - An entry is written after its contents. Space holders count `quota_space_bytes` over the sizes of entries and of
   their `refs`.
 - A content without expiry that no entry refers to is an **orphan**. Relays find orphans during repair (§8) and
@@ -424,7 +427,7 @@ Merge rules (no consensus):
 A client may ask any relay of the network for any object. If the relay does not hold it and the request is a
 client request (peer GETs never ask further):
 
-1. It asks up to 5 holders (chosen first) whether they hold the object, 5 s timeout.
+1. It asks up to 5 holders (chosen first) whether they hold the object, with a 5 s timeout.
 2. A `gone` anywhere → 410.
 3. Nobody has it → 404 with empty `holders`; if all asked holders answered, it remembers this for 30 s.
 4. **Entries** (`placement: space`): → 404 with `holders`. No repair on read and no proxy; missing copies of
@@ -446,17 +449,19 @@ Offered when `watch` is in `/andp/v1/info` `extensions`.
 {"space": "…", "target": {"type": "apns", "token": "<hex>", "topic": "…", "env": "production"}}
 ```
 
-- The relay stores the watch for 45 days; posting again refreshes it. `{"space": …, "target": …, "remove": true}`
-  removes the watch of that target for that space.
+- The relay stores the watch for 45 days and answers 204; posting again refreshes it.
+  `{"space": …, "target": …, "remove": true}` removes the watch of that target for that space.
+- For `apns`, `token` is the device token as lower-case hex, `env` is `production` or `sandbox`, and `topic` must be
+  an app the relay serves (relay policy, otherwise 403).
 - The watch ID (§2) is computed over the raw token bytes (for `apns`: the hex-decoded token).
 - On every new entry in the space the relay notifies all watches of the space, except when the write carries
   `ANDP-Notify: none` or the watch ID equals `ANDP-Watch-Skip`. Repair writes never notify.
 - For `apns` the notification is an alert push with title and body from relay policy, `mutable-content: 1`,
-  `collapse-id` = object id and field `o` = object id. The app fetches and decrypts itself.
+  `collapse-id` = object id and field `o` = object id. The app fetches and decrypts the entry itself.
 - **Alarm priority**: a write with `ANDP-Notify: alarm` notifies like any other, but an `apns`
   notification additionally carries `interruption-level: time-sensitive` and `sound: "alarm.caf"` in `aps`. A relay that may send critical alerts (relay policy, only after Apple granted the
   entitlement to the app) sets instead `interruption-level: critical` and
-  `sound: {"critical": 1, "name": "alarm.caf", "volume": 1.0}`. `webpush` is unchanged. The relay learns only that
+  `sound: {"critical": 1, "name": "alarm.caf", "volume": 1.0}`. `webpush` notifications are unchanged. The relay learns only that
   an alarm came, not what it says. Relays that do not know the value notify as usual (§13); a client MUST NOT
   rely on the alarm priority being applied. `none` wins over `alarm`; one header carries one value.
 - At most 32 watches per space and 64 spaces per token; the oldest drops out.
@@ -477,7 +482,7 @@ subscription works at every relay.
 - The watch ID (§2) is computed over the raw token bytes, i.e. the endpoint URL.
 - The notification is a push message without payload (RFC 8030), signed with VAPID (`Authorization: vapid t=…, k=…`),
   `TTL` one day, `Urgency: high`, `Topic` fixed per relay so that the push service keeps only the newest. The page
-  shows a neutral notice and fetches by itself when opened. A push service answering 404 or 410 removes the target.
+  shows a neutral notice and fetches new entries itself when opened. A push service answering 404 or 410 removes the target.
 
 ### 10.2 Target `relay` (stream to a home relay)
 
@@ -490,8 +495,8 @@ Offered when `stream` is in `extensions` (and `watch`), see §18.
 
 - `token` is the hex of an Ed25519 public key of the device (**stream key**), `node` the home relay that holds the
   device's stream, `tag` an opaque label of the space chosen by the device (the relay never learns more from it).
-  The relay rejects the target with 400 if `node` is not a relay of its current network list, `token` is not 64 hex
-  characters or `tag` is not 16 bytes.
+  The relay rejects the target with 400 if `node` is not a relay of its current network list, `token` is not 64
+  lower-case hex characters or `tag` is not 16 bytes.
 - A watch is keyed by space and token: posting it again with another `node` or `tag` replaces it.
 - The watch ID (§2) is computed over the raw token bytes (the stream key), so `ANDP-Watch-Skip` works as for the other
   targets.
@@ -514,7 +519,7 @@ clients MUST adapt.
 - **Browsers** connect to `host`. The relay presents a Web PKI certificate (Let's Encrypt) for `host` and the shared
   names of the network (for anynear: `anynear.net`), selected by SNI.
 - **CORS:** relays answer preflight `OPTIONS` and set `Access-Control-Allow-Origin` (from `cors_origins`),
-  `Access-Control-Allow-Headers: Authorization, ANDP-*` (listed explicitly),
+  `Access-Control-Allow-Headers: Authorization, Content-Type, ANDP-*` (listed explicitly),
   `Access-Control-Expose-Headers` for all `ANDP-*` response headers, `Access-Control-Allow-Methods: GET, PUT, DELETE,
   POST`.
 - Rate limits per IP are relay policy; peer requests are exempt.
@@ -551,15 +556,17 @@ Version v1 is meant to last: apps update, they are not reinstalled. Therefore:
 
 `vectors/andp-v1.json` holds, for fixed keys derived from `SHA-256("ANDP vectors: <label>")` as Ed25519 seeds:
 
+- b64u strings that decoders must accept or reject (§1),
 - signing bytes and signatures for every domain of §14,
-- grant body CBOR, grant b64u and grant hash,
+- grant body CBOR, grant b64u and grant hash, and grants that must be rejected,
 - refs CBOR and `refsDigest`,
+- objects with their signing bytes and PUT header sets, including a revocation,
 - placement orders, chosen and spare for fixed lists and keys,
 - network ID, including a key rotation that keeps `id` and a list signed by the announced `next`,
-- network lists with an unknown `state` and with an invalid relay entry, and the active relays that remain,
-- one radio list with its signature,
-- one complete `Authorization` header and one PUT header set,
-- cards (valid, tampered, unknown phase, out-of-range weight, other network, relay not in the list), weighted
+- network lists with an unknown `state` and with invalid relay entries, and the active relays that remain,
+- radio lists that must be accepted or rejected,
+- complete `Authorization` headers, a DELETE with its tombstone, and a watch ID,
+- cards (valid, tampered, unknown phase, out-of-range weight, repeated key, other network, relay not in the list), weighted
   placement scores, chosen and spare for fixed weights, `log2q32` for fixed inputs, and damaged relays with the read members that remain (§17).
 
 Every implementation MUST pass all vectors. The reference implementation of the anynear relays generates the file;
@@ -605,10 +612,9 @@ A relay never sees plaintext or keys of the application. Contents can be read by
 
 Against this ANDP keeps three copies at three different operators (§6), lets every relay and every client compute the
 placement itself and repairs every minute (§8); a client that still has an object can also write it again (§3 rule 2).
-One dishonest
-operator therefore cannot make an object unavailable; three colluding chosen holders can. ANDP has no consensus and no
-proof of storage: a relay that claims to hold something is found out only when a reader or a self-check of others
-(`seen`, §17.1) asks for it.
+One dishonest operator therefore cannot make an object unavailable; three colluding chosen holders can. ANDP has no
+consensus and no proof of storage: a relay that claims to hold something is found out only when a reader or a
+self-check of others (`seen`, §17.1) asks for it.
 
 ### 16.4 The network key
 
@@ -661,7 +667,7 @@ The card text:
 | `v` | `1` |
 | `id` | the network ID (§2) |
 | `node` | the relay's node key; also the key that signs the card |
-| `ver` | integer > 0; grows with every new card of this node and never goes down, also across restarts (a relay uses at least the current Unix milliseconds) |
+| `ver` | integer > 0; grows with every new card of this node and never goes down, not even across restarts (a relay uses at least the current Unix milliseconds) |
 | `beat` | Unix milliseconds the card was made; a relay makes a new card at least every minute (heartbeat) |
 | `phase` | `probe`, `join`, `active` or `leave` (§17.2); a card with another value is invalid |
 | `since` | Unix milliseconds the phase began |
@@ -671,7 +677,7 @@ The card text:
 | `full` | optional; `true` while the relay accepts no new objects (free space below its reserve) |
 | `conn` | optional; Unix milliseconds since when the relay has continuously received fresh cards from at least two other relays (0 or absent: not now) |
 | `seen` | optional; per other relay what this relay found in its last repair round: `ph` the phase of that relay in this relay's view, `total` objects this relay holds for which that relay is a target, `miss` how many of them it lacked, `lost` how many of those it lacked although it had confirmed them `here` before (optional), `at` Unix milliseconds of the round |
-| `sw` | optional; software version, for people |
+| `sw` | optional; software version, for humans |
 
 A card is valid if it parses, its fields follow this table and the signature by `node` verifies. Unknown fields are
 ignored.
@@ -699,7 +705,7 @@ Clients only read the phase.
 Relays spread their cards among themselves and check each other's health (ANDP Peer). A view keeps, per node, the
 valid card with the highest `ver` whose `id` is the network ID and whose `node` is in the network list (any state).
 Merging in any order gives the same view. `GET /andp/v1/view` returns `{"cards": [ … ]}` with every card the relay
-holds, for clients and people.
+holds, for clients and for display.
 
 ### 17.4 Weighted placement
 
@@ -721,7 +727,8 @@ implementation gets the same bits:
 
 The score is −log2(1 − u) for u = t / 2^64 in Q32, so it grows with the rank. Members are sorted ascending by
 `score / w`, compared as `score_a · w_b < score_b · w_a` (both products fit in 64 bits), ties by rank and then by
-`node`; chosen, spare and substitutes follow as in §6 steps 3–5. Members with weight 0 are not placed. With the same
+`node`; chosen, spare and substitutes follow as in §6 steps 3–5. A relay without card has weight 1. A card with
+weight 0 removes the relay from the target placement; in the read placement it counts as weight 1. With the same
 weight for every member the order equals §6. A relay with weight `w` comes first for a share of keys proportional to
 `w`.
 
@@ -731,14 +738,14 @@ policy (ANDP Peer). Clients use the weight as announced.
 **Weight mode:** a card carries `weights` with the mode the relay supports: absent (none), `contents` or `all`. The
 network uses the lowest mode announced by the relays in `join` or `active` (a relay without card announces none):
 
-| Mode | Placement by weight | Placement as §6 |
+| Mode | Placement by weight | Placement as in §6 |
 |---|---|---|
 | none | – | everything |
 | `contents` | contents (`placement: object`) | entries |
 | `all` | everything | – |
 
 So weights apply only once every relay that takes part supports them, and everyone computes the same mode from the same
-view. Clients without `view` place as §6; they find contents placed by weight through §9 (holders), and entries stay
+view. Clients without `view` place as in §6; they find contents placed by weight through §9 (holders), and entries stay
 where they look until the mode is `all`.
 
 ### 17.5 Stand-in for contents placed by weight
@@ -769,7 +776,7 @@ connection to one relay, its **home relay**, instead of polling every space. `/a
 ```
 
 - `ping`: seconds between `ping` events (default 180).
-- `clients`: whether apps shall use the stream now. It lets the network switch the stream on and off without a new app
+- `clients`: whether apps should use the stream now. It lets the network switch the stream on and off without a new app
   release; a client that sees `false` (or no `stream` field) keeps polling.
 
 ### 18.1 GET /andp/v1/stream
@@ -783,7 +790,7 @@ Events, each `event: <type>` and one `data:` line with JSON, ended by an empty l
 | Event | Data | Meaning |
 |---|---|---|
 | `ping` | `{}` | sent at once after connecting and then every `ping` seconds |
-| `new` | `{"tags": ["<b64u>", …], "alarm": false}` | spaces with these tags have new entries; `alarm` if one of the writes carried `ANDP-Notify: alarm` |
+| `new` | `{"tags": ["<b64u>", …], "alarm": true}` | spaces with these tags have new entries; `alarm` is `true` if one of the writes carried `ANDP-Notify: alarm`, and absent otherwise |
 | `bye` | `{}` | the relay closes the stream (shutdown); the client reconnects after a random delay |
 
 - At most one stream per stream key: a new stream replaces the older one, which is closed.
@@ -795,4 +802,5 @@ Events, each `event: <type>` and one `data:` line with JSON, ended by an empty l
 ### 18.2 Between relays
 
 A relay that holds a new entry for a `relay` watch (§10.2) tells the device's home relay, which sends the `new`
-event. This hand-over between relays is part of ANDP Peer. The home relay merges equal (token, tag) within 2 s.
+event. This hand-over between relays is part of ANDP Peer. The home relay merges notifications for the same (token, tag)
+that arrive within 2 s.

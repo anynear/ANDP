@@ -152,7 +152,9 @@ data class SignedList(val list: String, val sig: Sig) {
 private fun parseList(text: String): NetworkList {
     fun bad(e: Exception): Nothing = throw AndpException("andp: network list: ${e.message}", e)
     val obj = try {
-        AndpJson.parseToJsonElement(text).jsonObject
+        StrictJson.parse(text).jsonObject
+    } catch (e: AndpException) {
+        bad(e)
     } catch (e: SerializationException) {
         bad(e)
     } catch (e: IllegalArgumentException) {
@@ -192,7 +194,7 @@ data class RadioHead(val v: Int, val id: Hash, val network: Key, val issued: Lon
     companion object {
         fun parse(text: String): RadioHead {
             val h = try {
-                AndpJson.decodeFromString(serializer(), text)
+                decodeAndpJson(serializer(), text)
             } catch (e: SerializationException) {
                 throw AndpException("andp: radio list: ${e.message}", e)
             } catch (e: IllegalArgumentException) {
