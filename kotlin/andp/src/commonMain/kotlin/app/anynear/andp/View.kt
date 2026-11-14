@@ -72,7 +72,7 @@ data class SignedCard(val card: String, val sig: Sig) {
     /** Parses and validates the card and checks the signature by its node key. */
     suspend fun open(): Card {
         val c = try {
-            AndpJson.decodeFromString(Card.serializer(), card)
+            decodeAndpJson(Card.serializer(), card)
         } catch (e: SerializationException) {
             throw AndpException("andp: card: ${e.message}", e)
         } catch (e: IllegalArgumentException) {

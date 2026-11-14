@@ -280,12 +280,51 @@ class FormatsTest {
         assertFailsWith<AndpException> { signedText(text.replace("\"v\":1", "\"v\":1.5")).open() }
         assertFailsWith<AndpException> { signedText(text.replace(",\"id\":\"$id\"", "")).open() }
         assertEquals(l1, signedText(text.replace("\"v\":1", "\"v\":1,\"future\":{\"x\":[1]}")).open())
+        // A repeated key makes the document invalid (§1), also in a relay entry and also when escaped differently.
+        assertFailsWith<AndpException> { signedText(text.replace("\"v\":1", "\"v\":1,\"issued\":1")).open() }
+        assertFailsWith<AndpException> { signedText(text.replaceFirst("\"op\":", "\"op\":\"x\",\"op\":")).open() }
+        assertFailsWith<AndpException> { signedText(text.replace("\"v\":1", "\"v\":1,\"\\u0076\":1")).open() }
 
         // Holders are followed only when node and TLS key are in the list.
         assertTrue(l1.knows(relays[0]))
         assertFalse(l1.knows(relays[0].copy(key = Hash.of(ByteArray(0)))))
         assertFalse(l1.knows(relay(3, "c")))
         assertEquals(relays, l1.active())
+    }
+
+    @Test
+    fun repeatedJsonKeys() = runTest {
+        fun rejected(text: String) = assertFailsWith<AndpException>(text) { StrictJson.requireUniqueKeys(text) }
+        rejected("""{"a":1,"a":2}""")
+        rejected("""{"a":1,"b":{"c":1,"c":1}}""")
+        rejected("""[{"x":1},{"y":[{"z":1,"z":2}]}]""")
+        rejected("""{"a":{"b":1},"a":2}""")
+        rejected("""{"a":1,"\u0061":2}""")
+        rejected("""{"a\\b":1,"a\u005cb":2}""")
+        for (ok in listOf(
+            """{"a":1,"b":{"a":1},"c":[{"a":1},{"a":2}]}""",
+            """{"a":"\"a\":1,","b":"{\"a\":1}","c":"\\"}""",
+            """{"A":1,"a":2}""",
+            """{}""",
+            """[]""",
+        )) {
+            StrictJson.requireUniqueKeys(ok)
+            StrictJson.parse(ok)
+        }
+        assertFailsWith<AndpException> { StrictJson.parse("""{"a":1,"a":1}""") }
+        assertFailsWith<AndpException> { StrictJson.parse("""{"a":1""") }
+
+        // Radio list head and card (§5.9, §17.1).
+        val net = testKey("network")
+        val id = networkId(net.key)
+        val radio = """{"v":1,"id":"$id","network":"${net.key}","issued":5}"""
+        RadioHead.parse(radio)
+        assertFailsWith<AndpException> { RadioHead.parse(radio.replace("\"issued\":5", "\"issued\":5,\"issued\":6")) }
+        val node = testKey("node")
+        val card = """{"v":1,"id":"$id","node":"${node.key}","ver":2,"beat":2,"phase":"active","since":1,"weight":1,"cap":0,"used":0}"""
+        SignedCard(card, node.sign(SigningBytes.card(card))).open()
+        val twice = card.replace("\"weight\":1", "\"weight\":1,\"weight\":1024")
+        assertFailsWith<AndpException> { SignedCard(twice, node.sign(SigningBytes.card(twice))).open() }
     }
 
     @Test

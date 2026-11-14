@@ -12,11 +12,11 @@ vulnerability.
 - We confirm receipt and tell you what happens next.
 - Please give us time to fix the problem before you publish it.
 - Test only with your own devices, spaces and keys, and do not disrupt the relays of the anynear network.
-- We cannot pay a bounty. If you wish, we name you once the problem is fixed.
+- We cannot pay a bounty. If you wish, we will credit you once the problem is fixed.
 
 ## Scope
 
-The specification (`spec/andp.md`), the test vectors and the Go and Kotlin code in this repository. For the apps and
+The specification (`spec/andp.md`), the test vectors and the Kotlin code in this repository. For the apps and
 the website see https://anynear.app/en/technology/.
 
 ## Known limits
