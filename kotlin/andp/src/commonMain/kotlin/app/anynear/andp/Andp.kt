@@ -230,6 +230,9 @@ object AndpHeaders {
     /** Value of ANDP-Notify: wake with alarm priority (§10). */
     const val NOTIFY_ALARM = "alarm"
 
+    /** Value of ANDP-Notify: wake without showing anything, a background push on iOS (§10). */
+    const val NOTIFY_QUIET = "quiet"
+
     /** Value of ANDP-Fetch. */
     const val FETCH_PROXY = "proxy"
 
