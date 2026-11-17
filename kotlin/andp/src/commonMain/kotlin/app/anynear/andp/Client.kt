@@ -46,6 +46,8 @@ data class PutOptions(
     val watchSkip: String = "",
     /** ANDP-Notify: alarm, wakes with alarm priority (§10); [noNotify] wins. */
     val alarm: Boolean = false,
+    /** ANDP-Notify: quiet, wakes without showing anything (§10); [noNotify] wins, then [quiet] over [alarm]. */
+    val quiet: Boolean = false,
 )
 
 /** Options of GET of an object. */
@@ -144,6 +146,7 @@ class AndpClient internal constructor(
         val headers = meta.headers().toMutableList()
         when {
             options.noNotify -> headers += AndpHeaders.NOTIFY to AndpHeaders.NOTIFY_NONE
+            options.quiet -> headers += AndpHeaders.NOTIFY to AndpHeaders.NOTIFY_QUIET
             options.alarm -> headers += AndpHeaders.NOTIFY to AndpHeaders.NOTIFY_ALARM
         }
         if (options.watchSkip.isNotEmpty()) headers += AndpHeaders.WATCH_SKIP to options.watchSkip

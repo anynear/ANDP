@@ -244,6 +244,9 @@ class ClientTest {
         val other = "none wins".encodeToByteArray()
         e.client.put(e.grantee, e.meta(e.grantee, other, Placement.SPACE), other, PutOptions(noNotify = true, alarm = true))
         assertEquals(AndpHeaders.NOTIFY_NONE, e.relay.requests.last().headers[AndpHeaders.NOTIFY])
+        val quiet = "quiet wins over alarm".encodeToByteArray()
+        e.client.put(e.grantee, e.meta(e.grantee, quiet, Placement.SPACE), quiet, PutOptions(quiet = true, alarm = true))
+        assertEquals(AndpHeaders.NOTIFY_QUIET, e.relay.requests.last().headers[AndpHeaders.NOTIFY])
     }
 
     @Test

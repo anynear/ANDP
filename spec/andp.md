@@ -217,7 +217,7 @@ Body: the object bytes. Headers (all required unless noted):
 | `ANDP-Revokes` | grant hash; omitted when empty |
 | `ANDP-Grant` | the writer's grant (b64u); omitted when the writer is the owner |
 | `ANDP-Sig` | object signature (§3) |
-| `ANDP-Notify` | optional, `none` to suppress watch notifications, `alarm` to wake with alarm priority (§10) |
+| `ANDP-Notify` | optional, `none` to suppress watch notifications, `alarm` to wake with alarm priority, `quiet` to wake without showing anything (§10) |
 | `ANDP-Watch-Skip` | optional, a watch ID that is not notified (the writer's own) |
 
 For a client write the `Authorization` key MUST equal `ANDP-Writer`, and the writer must hold `write` (via grant
@@ -463,7 +463,12 @@ Offered when `watch` is in `/andp/v1/info` `extensions`.
   entitlement to the app) sets instead `interruption-level: critical` and
   `sound: {"critical": 1, "name": "alarm.caf", "volume": 1.0}`. `webpush` notifications are unchanged. The relay learns only that
   an alarm came, not what it says. Relays that do not know the value notify as usual (§13); a client MUST NOT
-  rely on the alarm priority being applied. `none` wins over `alarm`; one header carries one value.
+  rely on the alarm priority being applied. `none` wins over `quiet` and `alarm`, `quiet` wins over `alarm`; one header
+  carries one value.
+- **Quiet**: a write with `ANDP-Notify: quiet` updates devices without showing anything. An `apns` notification is a
+  background push instead: `aps` is only `{"content-available": 1}`, `apns-push-type: background`, `apns-priority: 5`,
+  `collapse-id` and `o` as above. `webpush` watches are not notified (browsers must show every push). `relay` watches
+  (§10.2) are notified as usual. Relays that do not know the value notify as usual (§13).
 - At most 32 watches per space and 64 spaces per token; the oldest drops out.
 
 ### 10.1 Target `webpush` (browsers)
