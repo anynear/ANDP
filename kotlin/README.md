@@ -11,7 +11,7 @@ the relays use; the versions of Kotlin, Ktor, kotlinx-serialization and cryptogr
 | objects | `Meta` (sign, verify, headers), `Refs`, `ListedObject`, `Receipt`, `Tombstone`, `Auth` (Authorization header) |
 | network | `NetworkList` (`verify`, `accept` with `next` rotation, `sign`), `SignedList`, `Relay`, `networkId`, `watchId` |
 | placement | `Placements.order`/`place`, `Choice.targets` |
-| client | `AndpClient` (Ktor): `pinned` (Android, JVM, iOS) and `webPki`; info, net, list, put, get, delete, status, watch |
+| client | `AndpClient` (Ktor): `pinned` (Android, JVM, iOS) and `webPki`; info, net, list, put (also held until a time, `PutOptions.notBefore`, §19), get, delete, status, watch |
 | JS facade | `app.anynear.andp.web` (`@JsExport`): `AndpWeb`, `AndpWebSigner`, `AndpWebClient` with Promises and JSON |
 
 SHA-256 is plain Kotlin, so ids and hashes are synchronous everywhere; Ed25519 uses cryptography-kotlin (JDK with

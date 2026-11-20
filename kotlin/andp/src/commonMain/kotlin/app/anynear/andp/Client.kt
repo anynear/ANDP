@@ -48,6 +48,12 @@ data class PutOptions(
     val alarm: Boolean = false,
     /** ANDP-Notify: quiet, wakes without showing anything (§10); [noNotify] wins, then [quiet] over [alarm]. */
     val quiet: Boolean = false,
+    /**
+     * ANDP-Not-Before (§19), Unix seconds: the relay stores the entry now and delivers it from that time on, unless
+     * it was deleted before; `0` is an ordinary write. Send it only to a relay whose [Info] announces
+     * [Andp.EXTENSION_NOT_BEFORE]: others ignore the header and deliver at once.
+     */
+    val notBefore: Long = 0,
 )
 
 /** Options of GET of an object. */
@@ -56,8 +62,8 @@ data class GetOptions(
     val proxy: Boolean = false,
 )
 
-/** A verified object: metadata and bytes. */
-class Fetched(val meta: Meta, val data: ByteArray)
+/** A verified object: metadata and bytes. [notBefore] is the time it was held until (§19), `0` for an ordinary object. */
+class Fetched(val meta: Meta, val data: ByteArray, val notBefore: Long = 0)
 
 /**
  * HTTP client for one relay and all client endpoints of ANDP version v1 (§5). Apps create it with
@@ -150,6 +156,7 @@ class AndpClient internal constructor(
             options.alarm -> headers += AndpHeaders.NOTIFY to AndpHeaders.NOTIFY_ALARM
         }
         if (options.watchSkip.isNotEmpty()) headers += AndpHeaders.WATCH_SKIP to options.watchSkip
+        if (options.notBefore != 0L) headers += AndpHeaders.NOT_BEFORE to AndpInt.format(options.notBefore)
         val path = AndpPaths.obj(meta.space, meta.id)
         val rc = decode(send(Req(HttpMethod.Put, path, body = data, cred = cred, headers = headers)), Receipt.serializer(), "PUT $path")
         if (relay != null && rc.node != relay.node) throw AndpException("client: receipt from another node")
@@ -174,7 +181,9 @@ class AndpClient internal constructor(
         val meta = Meta.fromHeaders(space, id, data.size.toLong()) { resp.headers.getAll(it).orEmpty() }
         meta.checkData(data)
         meta.verify()
-        return Fetched(meta, data)
+        // Not signed and only for information (§19 rule 6): an unreadable value counts as absent.
+        val notBefore = resp.headers[AndpHeaders.NOT_BEFORE]?.let { runCatching { AndpInt.parse(it) }.getOrNull() } ?: 0L
+        return Fetched(meta, data, notBefore)
     }
 
     /** DELETE /andp/v1/s/{space}/{id} with ANDP-Del-Sig over the Authorization ts (§5.5). */

@@ -2021,5 +2021,166 @@
       "token_hex": "6a5f1c2b3d4e5f60718293a4b5c6d7e8f90112233445566778899aabbccddeef",
       "watch_id": "R-zC2CeRVIHxgsAHSk5UMQ"
     }
-  ]
+  ],
+  "not_before": {
+    "max_until": 2592000,
+    "writes": [
+      {
+        "name": "one second after ts, no expiry",
+        "placement": "space",
+        "ts": 1761200000,
+        "until": 0,
+        "header": "1761200001",
+        "accept": true
+      },
+      {
+        "name": "before the expiry",
+        "placement": "space",
+        "ts": 1761200000,
+        "until": 1761203600,
+        "header": "1761201800",
+        "accept": true
+      },
+      {
+        "name": "exactly ts + max_until",
+        "placement": "space",
+        "ts": 1761200000,
+        "until": 0,
+        "header": "1763792000",
+        "accept": true
+      },
+      {
+        "name": "0 is an ordinary write",
+        "placement": "space",
+        "ts": 1761200000,
+        "until": 0,
+        "header": "0",
+        "accept": true
+      },
+      {
+        "name": "0 on a content is an ordinary write",
+        "placement": "object",
+        "ts": 1761200000,
+        "until": 0,
+        "header": "0",
+        "accept": true
+      },
+      {
+        "name": "equal to ts",
+        "placement": "space",
+        "ts": 1761200000,
+        "until": 0,
+        "header": "1761200000",
+        "accept": false
+      },
+      {
+        "name": "before ts",
+        "placement": "space",
+        "ts": 1761200000,
+        "until": 0,
+        "header": "1761199999",
+        "accept": false
+      },
+      {
+        "name": "later than ts + max_until",
+        "placement": "space",
+        "ts": 1761200000,
+        "until": 0,
+        "header": "1763792001",
+        "accept": false
+      },
+      {
+        "name": "equal to until",
+        "placement": "space",
+        "ts": 1761200000,
+        "until": 1761203600,
+        "header": "1761203600",
+        "accept": false
+      },
+      {
+        "name": "after until",
+        "placement": "space",
+        "ts": 1761200000,
+        "until": 1761203600,
+        "header": "1761203601",
+        "accept": false
+      },
+      {
+        "name": "on a content",
+        "placement": "object",
+        "ts": 1761200000,
+        "until": 0,
+        "header": "1761200060",
+        "accept": false
+      },
+      {
+        "name": "on a revocation",
+        "placement": "space",
+        "revocation": true,
+        "ts": 1761200000,
+        "until": 0,
+        "header": "1761200060",
+        "accept": false
+      },
+      {
+        "name": "leading zero",
+        "placement": "space",
+        "ts": 1761200000,
+        "until": 0,
+        "header": "01761200060",
+        "accept": false
+      },
+      {
+        "name": "negative",
+        "placement": "space",
+        "ts": 1761200000,
+        "until": 0,
+        "header": "-1",
+        "accept": false
+      },
+      {
+        "name": "not a number",
+        "placement": "space",
+        "ts": 1761200000,
+        "until": 0,
+        "header": "soon",
+        "accept": false
+      },
+      {
+        "name": "empty",
+        "placement": "space",
+        "ts": 1761200000,
+        "until": 0,
+        "header": "",
+        "accept": false
+      }
+    ],
+    "held": {
+      "data_hex": "414e445020766563746f72733a2068656c6420656e747279",
+      "path": "/andp/v1/s/m2t0j6S50atx0ceYiz2o4aoqwwUAbBhEixpThGdxCaU/biQnaIQvF8YiKC5m3Ey7O_tHPJ5bqzxzT5rwrnPaGgQ",
+      "headers": {
+        "ANDP-Grant": "glhVpQFYIJtrdI-kudGrcdHHmIs9qOGqKsMFAGwYRIsaU4RncQmlAgQDWCBTp4Qvs_tKA_KqOp6A9qgayZAvYy9m-AJsFPjZ4gtecQUaaPsZAAYaaPm5cFhAnvXCauUYzOWtAr-N9AfSXwWrt1MBknxuWXnDed6NEKQ-rxWxj7DSlZCna97EKoDC_nMIUlzFNJ17YQHWmrf_Dg",
+        "ANDP-Not-Before": "1761201800",
+        "ANDP-Notify": "alarm",
+        "ANDP-Placement": "space",
+        "ANDP-Sig": "NnmezrAB2la17_gOyzfptY0NK3sYeUr4e9lPEi8IzlmKC0vvKYzrpWsDiI8hBmJcWSAGYsvwZUAFKpqLj-pgBw",
+        "ANDP-Ts": "1761200000",
+        "ANDP-Until": "1761286400",
+        "ANDP-Writer": "U6eEL7P7SgPyqjqegPaoGsmQL2MvZvgCbBT42eILXnE"
+      },
+      "listed": {
+        "seq": 42,
+        "id": "biQnaIQvF8YiKC5m3Ey7O_tHPJ5bqzxzT5rwrnPaGgQ",
+        "size": 24,
+        "ts": 1761200000,
+        "until": 1761286400,
+        "placement": "space",
+        "writer": "U6eEL7P7SgPyqjqegPaoGsmQL2MvZvgCbBT42eILXnE",
+        "grant": "glhVpQFYIJtrdI-kudGrcdHHmIs9qOGqKsMFAGwYRIsaU4RncQmlAgQDWCBTp4Qvs_tKA_KqOp6A9qgayZAvYy9m-AJsFPjZ4gtecQUaaPsZAAYaaPm5cFhAnvXCauUYzOWtAr-N9AfSXwWrt1MBknxuWXnDed6NEKQ-rxWxj7DSlZCna97EKoDC_nMIUlzFNJ17YQHWmrf_Dg",
+        "sig": "NnmezrAB2la17_gOyzfptY0NK3sYeUr4e9lPEi8IzlmKC0vvKYzrpWsDiI8hBmJcWSAGYsvwZUAFKpqLj-pgBw",
+        "data": "QU5EUCB2ZWN0b3JzOiBoZWxkIGVudHJ5",
+        "not_before": 1761201800
+      }
+    }
+  }
 }

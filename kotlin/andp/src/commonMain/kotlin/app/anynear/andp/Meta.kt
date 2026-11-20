@@ -1,5 +1,6 @@
 package app.anynear.andp
 
+import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
 /** Read access to HTTP headers: all values of a header, matched case-insensitively; empty when absent. */
@@ -57,6 +58,17 @@ data class Meta(
     /** Applies max_until (policy, §3 rule 4). */
     fun checkUntil(maxUntil: Long) {
         if (until != 0L && until - ts > maxUntil) throw AndpException("andp: until exceeds max_until")
+    }
+
+    /**
+     * Applies §19 rule 2 to a write of this metadata with ANDP-Not-Before [notBefore]; `0` (an ordinary write) is
+     * always valid. [maxUntil] is the relay's policy value.
+     */
+    fun checkNotBefore(notBefore: Long, maxUntil: Long) {
+        if (notBefore == 0L) return
+        val ok = notBefore > 0 && isEntry && revokes == null && notBefore > ts && notBefore - ts <= maxUntil &&
+            (until == 0L || notBefore < until)
+        if (!ok) throw AndpException("andp: invalid not_before")
     }
 
     /** Whether the object must no longer be delivered at [now] (Unix seconds, §3 rule 4). */
@@ -206,6 +218,8 @@ class ListedObject(
     val grant: Grant? = null,
     val sig: Sig,
     @Serializable(with = B64BytesSerializer::class) val data: ByteArray? = null,
+    /** The time the entry was held until (§19); `0` for an ordinary entry. Not signed, for information only. */
+    @SerialName("not_before") val notBefore: Long = 0,
 ) {
     /** The metadata of the item in [space]. */
     fun meta(space: Key): Meta = Meta(space, id, size, ts, until, placement, refs, revokes, writer, grant, sig)

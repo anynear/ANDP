@@ -250,6 +250,19 @@ class ClientTest {
     }
 
     @Test
+    fun notBeforeHeader() = runTest {
+        val e = setup()
+        val entry = "held".encodeToByteArray()
+        val em = e.meta(e.grantee, entry, Placement.SPACE)
+        e.client.put(e.grantee, em, entry, PutOptions(alarm = true, notBefore = em.ts + 600))
+        assertEquals((em.ts + 600).toString(), e.relay.requests.last().headers[AndpHeaders.NOT_BEFORE])
+        assertEquals(AndpHeaders.NOTIFY_ALARM, e.relay.requests.last().headers[AndpHeaders.NOTIFY])
+        val plain = "ordinary".encodeToByteArray()
+        e.client.put(e.grantee, e.meta(e.grantee, plain, Placement.SPACE), plain)
+        assertNull(e.relay.requests.last().headers[AndpHeaders.NOT_BEFORE])
+    }
+
+    @Test
     fun objects() = runTest {
         val e = setup()
         val content = "ciphertext".encodeToByteArray()

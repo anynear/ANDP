@@ -111,6 +111,35 @@ class GoRelayIntegrationTest {
                 assertEquals(StreamNew(listOf(tag), alarm = true), AndpJson.decodeFromString(StreamNew.serializer(), ev.data))
                 job.cancel()
             }
+            // Extension not_before (§19): a held entry is not there for clients until its time, then it is listed
+            // after the old cursor; one that is deleted before never appears. Skipped against a test relay that does
+            // not offer it yet (an older checkout of ANDP-Peer).
+            if (info.hasExtension(Andp.EXTENSION_NOT_BEFORE)) {
+                val cursor = c.list(gc, space).next
+                val t0 = c.now()
+                val held = "held entry".encodeToByteArray()
+                val hm = Meta.signData(grantee, space, held, t0, placement = Placement.SPACE, grant = g)
+                c.put(gc, hm, held, PutOptions(alarm = true, notBefore = t0 + 2))
+                val dropped = "deleted before its time".encodeToByteArray()
+                val dm = Meta.signData(grantee, space, dropped, t0, placement = Placement.SPACE, grant = g)
+                c.put(gc, dm, dropped, PutOptions(notBefore = t0 + 2))
+                assertEquals(400, assertFailsWith<AndpHttpException> {
+                    val bad = "bad".encodeToByteArray()
+                    c.put(gc, Meta.signData(grantee, space, bad, t0, placement = Placement.SPACE, grant = g), bad, PutOptions(notBefore = t0))
+                }.status)
+                assertTrue(c.list(gc, space, ListOptions(after = cursor)).objects.isEmpty())
+                assertEquals(404, assertFailsWith<AndpHttpException> { c.get(gc, space, hm.id) }.status)
+                assertEquals(ObjectState.HERE, c.status(gc, space, listOf(hm.id))[hm.id])
+                c.delete(Credentials(owner), space, dm.id)
+                kotlinx.coroutines.delay(2500)
+                val released = c.list(gc, space, ListOptions(after = cursor)).objects
+                assertEquals(listOf(hm.id), released.map { it.id })
+                assertEquals(t0 + 2, released[0].notBefore)
+                assertEquals(t0 + 2, c.get(gc, space, hm.id).notBefore)
+            } else {
+                println("GoRelayIntegrationTest: the test relay does not offer not_before, that part is skipped")
+            }
+
             c.delete(Credentials(owner), space, cm.id)
             assertTrue(assertFailsWith<AndpHttpException> { c.put(gc, cm, content) }.isGone)
             assertEquals(403, assertFailsWith<AndpHttpException> { c.delete(gc, space, em.id) }.status)
