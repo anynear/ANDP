@@ -59,6 +59,9 @@ object Andp {
     /** Extension stream (§18) with the watch target `relay` (§10.2). */
     const val EXTENSION_STREAM = "stream"
 
+    /** Extension not_before (§19): an entry is stored at once and delivered from a given time on. */
+    const val EXTENSION_NOT_BEFORE = "not_before"
+
     /** Target types of watch (§10, §10.1, §10.2). */
     const val WATCH_TYPE_APNS = "apns"
     const val WATCH_TYPE_WEBPUSH = "webpush"
@@ -223,6 +226,9 @@ object AndpHeaders {
     const val WATCH_SKIP = "ANDP-Watch-Skip"
     const val DEL_SIG = "ANDP-Del-Sig"
     const val FETCH = "ANDP-Fetch"
+
+    /** Time of release of a held entry in Unix seconds (§19). Not part of the signed metadata. */
+    const val NOT_BEFORE = "ANDP-Not-Before"
 
     /** Value of ANDP-Notify: no watch notification. */
     const val NOTIFY_NONE = "none"

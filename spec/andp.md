@@ -169,6 +169,8 @@ All paths start with `/andp/v1`. Relays MUST support HTTP/1.1 and SHOULD support
 | GET | `/andp/v1/stream` | stream key | extension stream: events for the device (§18) |
 | GET | `/andp/v1/view` | – | extension view: cards of all relays (§17) |
 
+The extension not_before (§19) adds no path: it is a header on PUT.
+
 Relays also serve each other under `/andp/v1/peer/` (repair, gossip, notifications). These endpoints are part of
 ANDP Peer and not of this document.
 
@@ -188,7 +190,7 @@ ANDP Peer and not of this document.
     "cors_origins": ["*"],
     "repair_interval": 60
   },
-  "extensions": ["watch", "webpush", "radio", "view", "stream"],
+  "extensions": ["watch", "webpush", "radio", "view", "stream", "not_before"],
   "webpush": "<b64u VAPID public key>",
   "stream": {"ping": 180, "clients": false},
   "clients": {"min": 1}
@@ -219,6 +221,7 @@ Body: the object bytes. Headers (all required unless noted):
 | `ANDP-Sig` | object signature (§3) |
 | `ANDP-Notify` | optional, `none` to suppress watch notifications, `alarm` to wake with alarm priority, `quiet` to wake without showing anything (§10) |
 | `ANDP-Watch-Skip` | optional, a watch ID that is not notified (the writer's own) |
+| `ANDP-Not-Before` | optional, extension not_before (§19): Unix seconds before which the entry is not delivered |
 
 For a client write the `Authorization` key MUST equal `ANDP-Writer`, and the writer must hold `write` (via grant
 or as owner) at `ts`. The right comes from `ANDP-Grant`; `Authorization` needs no `grant` parameter on PUT. For a peer write `Authorization` is the sending relay; the object's own signature and grant
@@ -232,7 +235,7 @@ Responses:
 | Status | Meaning |
 |---|---|
 | 200 | stored durably. Body `{"node": "<b64u>", "receipt": "<b64u sig>"}` with `receipt = sign("andp/v1/receipt", space, id, until)` by the node key, `until` as in the request's `ANDP-Until`. |
-| 400 | malformed request, wrong hash or size, invalid or past `until`, refs on a content, client write with `ts` more than 300 s from the relay's clock |
+| 400 | malformed request, wrong hash or size, invalid or past `until`, refs on a content, client write with `ts` more than 300 s from the relay's clock, invalid `ANDP-Not-Before` (§19) |
 | 401 | missing or invalid `Authorization` |
 | 403 | no `write` right, invalid grant, revoked grant, invalid object signature, `Authorization` key is not the writer |
 | 409 | the object exists here with a different `placement` |
@@ -292,6 +295,8 @@ Needs `list`. Query: `after` (cursor, default empty = from the start), `wait` (0
   starts from the empty cursor at a relay it has not used before.
 - With `wait > 0` and no new entries, the relay holds the request up to `wait` seconds.
 - Revocation entries are listed like any entry.
+- An item carries `not_before` when the entry was written with `ANDP-Not-Before` (§19); it is listed only from that
+  time on.
 
 ### 5.7 POST /andp/v1/s/{space}/status
 
@@ -572,7 +577,9 @@ Version v1 is meant to last: apps update, they are not reinstalled. Therefore:
 - radio lists that must be accepted or rejected,
 - complete `Authorization` headers, a DELETE with its tombstone, and a watch ID,
 - cards (valid, tampered, unknown phase, out-of-range weight, repeated key, other network, relay not in the list), weighted
-  placement scores, chosen and spare for fixed weights, `log2q32` for fixed inputs, and damaged relays with the read members that remain (§17).
+  placement scores, chosen and spare for fixed weights, `log2q32` for fixed inputs, and damaged relays with the read members that remain (§17),
+- writes with `ANDP-Not-Before` that must be accepted or rejected, the PUT header set of a held entry and its list
+  item (§19).
 
 Every implementation MUST pass all vectors. The reference implementation of the anynear relays generates the file;
 all others only read it.
@@ -584,8 +591,8 @@ it makes what they can do visible and limits it. This section is informative.
 
 ### 16.1 What a relay sees
 
-A relay sees spaces, ids, sizes, `refs`, times, `until`, writer keys, client IP addresses and, with watch, push
-tokens. A space and a writer key are public keys, not names; what links them to a person is outside ANDP. Several
+A relay sees spaces, ids, sizes, `refs`, times, `until`, the time of a held entry (§19), writer keys, client IP
+addresses and, with watch, push tokens. A space and a writer key are public keys, not names; what links them to a person is outside ANDP. Several
 relays of one operator can correlate what they see. Version v1 does not hide any of this. Applications that need more
 (hidden sender, hidden header) add it inside the bytes; ANMP, for example, wraps its packets in an envelope.
 
@@ -611,6 +618,8 @@ A relay never sees plaintext or keys of the application. Contents can be read by
   `here` for bytes it lacks). A false `here` is found out when someone fetches the object, because every reader checks
   the hash.
 - **Send notifications** for spaces it holds watches for, or not send them.
+- **Release a held entry** (§19) early, late or never. An application that depends on the time repeats it inside the
+  bytes and checks it when reading.
 - **Lie in its card** (§17): announce a large `cap` to get a high weight and attract contents (§17.4), or report
   `miss` and `lost` about others. One operator alone cannot make another relay count as damaged; that takes cards of
   at least two other operators (§17.6).
@@ -809,3 +818,54 @@ Events, each `event: <type>` and one `data:` line with JSON, ended by an empty l
 A relay that holds a new entry for a `relay` watch (§10.2) tells the device's home relay, which sends the `new`
 event. This hand-over between relays is part of ANDP Peer. The home relay merges notifications for the same (token, tag)
 that arrive within 2 s.
+
+## 19. Extension: not_before
+
+Offered when `not_before` is in `/andp/v1/info` `extensions`. A writer hands over an entry now and lets the relays
+deliver it later: the relay stores the entry at once, **holds** it until a given time and then **releases** it. If
+the writer deletes the entry before that time, nobody ever receives it. This lets a device leave a message that
+only goes out if the device itself can no longer speak.
+
+A PUT (§5.3) of an entry carries
+
+```
+ANDP-Not-Before: <int>
+```
+
+in Unix seconds. An absent header, or the value `0`, is an ordinary write.
+
+1. **Not signed.** `not_before` is not part of the signed metadata of §3; signing bytes, signatures and receipts are
+   unchanged, so every v1 implementation verifies a held entry like any other. Like `ANDP-Notify` it is a request to
+   the relays. A writer for whom the time must hold end to end repeats it inside the bytes, and readers check it
+   there.
+2. **Valid values.** Only entries (`placement: space`) that are not revocations may carry it. The value MUST be
+   greater than `ts`, at most `ts + max_until` (policy) and, when `until` is not `0`, less than `until`. Anything else
+   is rejected with 400. A relay that offers the extension MUST NOT ignore an invalid value.
+3. **Only where announced.** A relay that does not know the extension ignores the header (§13) and would deliver the
+   entry at once. Therefore a client MUST send the header only to a relay that announces `not_before`, and a relay
+   passes on a held entry (§8) only to relays that announce it. Until all holders do, a held entry may have fewer
+   than three copies; once released it is repaired like any entry.
+4. **While held** the entry is stored durably and the PUT answers 200 with the usual receipt, but:
+    - it is not listed (§5.6) and a long poll does not end because of it,
+    - a client GET (§5.4) answers 404 as for an object that is not there,
+    - the write notifies nobody (§10), whatever `ANDP-Notify` says,
+    - `status` (§5.7) reports `here`, it counts against the quota, it expires at `until`, and DELETE (§5.5) removes it
+      as usual. A held entry that is deleted or expired is never released.
+   Peer requests see a held entry like any other; GET and repair PUT carry `ANDP-Not-Before`.
+5. **Release.** When its clock reaches `not_before` and the entry is still there, the relay releases it, at the
+   latest 5 seconds after that time:
+    - the entry takes a new place in the list, after every cursor the relay issued before, so every reader sees it as
+      a new entry; waiting long polls answer,
+    - the relay notifies the watches of the space as for a new entry (§10, §10.2), with the `ANDP-Notify` and
+      `ANDP-Watch-Skip` of the write. Relays store both values with a held entry and pass them on with repair writes.
+   Every holder releases on its own clock. A device may therefore be woken more than once for the same entry; apps
+   treat entries by `id`.
+6. **After release** it is an ordinary entry. List items carry `not_before` and GET answers `ANDP-Not-Before`, for
+   information only.
+7. **Late writes.** A write whose `not_before` is not in the future when it arrives is an ordinary write: a client
+   write notifies at once, a repair write never notifies (§10).
+8. **Same bytes again** (§3 rule 2): the relay keeps the `not_before` it stored first. A released entry is never held
+   again.
+
+What a relay learns: that an entry is meant for later, and when. A faulty relay can release an entry early, late or
+never (§16.3); rule 1 names the remedy for early release.

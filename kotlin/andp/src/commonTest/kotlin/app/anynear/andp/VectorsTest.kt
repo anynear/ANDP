@@ -145,6 +145,23 @@ class VView(
 class VWatch(@SerialName("token_hex") val tokenHex: String, @SerialName("watch_id") val watchId: String)
 
 @Serializable
+class VNotBeforeWrite(
+    val name: String,
+    val placement: String,
+    val revocation: Boolean = false,
+    val ts: Long,
+    val until: Long,
+    val header: String,
+    val accept: Boolean,
+)
+
+@Serializable
+class VHeld(@SerialName("data_hex") val dataHex: String, val path: String, val headers: Map<String, String>, val listed: ListedObject)
+
+@Serializable
+class VNotBefore(@SerialName("max_until") val maxUntil: Long, val writes: List<VNotBeforeWrite>, val held: VHeld)
+
+@Serializable
 class VectorFile(
     val ts: Long,
     val keys: List<VKey>,
@@ -162,6 +179,7 @@ class VectorFile(
     val placement: VPlacement,
     val view: VView,
     @SerialName("watch_id") val watch: List<VWatch>,
+    @SerialName("not_before") val notBefore: VNotBefore,
 )
 
 internal val vectorJson = Json { ignoreUnknownKeys = true }
@@ -429,6 +447,38 @@ class VectorsTest {
             assertEquals(w.watchId, watchId(hexToBytes(w.tokenHex)))
             assertEquals(w.watchId, watchIdForHexToken(w.tokenHex))
         }
+    }
+
+    @Test
+    fun notBefore() = runTest {
+        val nb = v.notBefore
+        val space = Key.parse(v.objects[0].space)
+        for (w in nb.writes) {
+            val revokes = if (w.revocation) Hash.of(ByteArray(0)) else null
+            val data = revokes?.bytes ?: ByteArray(0)
+            val ok = try {
+                val notBefore = AndpInt.parse(w.header)
+                Meta(space, ID.of(data), data.size.toLong(), w.ts, w.until, Placement.parse(w.placement), revokes = revokes, writer = space,
+                    sig = Sig.parse(v.objects[0].sig)).checkNotBefore(notBefore, nb.maxUntil)
+                true
+            } catch (e: AndpException) {
+                false
+            }
+            assertEquals(w.accept, ok, "not_before ${w.name}")
+        }
+        val data = hexToBytes(nb.held.dataHex)
+        val m = Meta.fromHeaders(space, ID.of(data), data.size.toLong(), HeaderSource.of(nb.held.headers))
+        m.checkData(data)
+        m.verify()
+        assertEquals(nb.held.path, AndpPaths.obj(space, m.id))
+        val notBefore = AndpInt.parse(nb.held.headers.getValue(AndpHeaders.NOT_BEFORE))
+        m.checkNotBefore(notBefore, nb.maxUntil)
+        // The list item verifies like any other: not_before is not signed (§19 rule 1).
+        assertEquals(notBefore, nb.held.listed.notBefore)
+        val lm = nb.held.listed.meta(space)
+        lm.verify()
+        assertEquals(m, lm)
+        assertTrue(data.contentEquals(nb.held.listed.inline()))
     }
 
     @Test
